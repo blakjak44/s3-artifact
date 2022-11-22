@@ -1,12 +1,27 @@
 {
+  "extends": "@tsconfig/recommended/tsconfig.json",
   "compilerOptions": {
-    "target": "es6",
-    "module": "commonjs",
-    "outDir": "./lib",
+    "resolveJsonModule": true,
+    "sourceMap": true,
+    "allowJs": false,
+    "allowSyntheticDefaultImports": true,
     "rootDir": "./src",
-    "strict": true,
-    "noImplicitAny": true,
-    "esModuleInterop": true
+    "outDir": "dist",
+    "baseUrl": "./"
   },
-  "exclude": ["node_modules", "__tests__", "**/*.test.ts"]
+  "paths": {
+    "s3-artifact": "src"
+  },
+  "lib": [
+    "esnext",
+    "dom",
+    "dom.iterable"
+  ],
+  "exclude": [
+    "node_modules",
+    "**/test/**",
+    "**/dist/**",
+    "**/scripts/**",
+    "rollup.config.ts"
+  ]
 }

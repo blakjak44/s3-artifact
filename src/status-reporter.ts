@@ -1,6 +1,10 @@
 import { info } from '@actions/core'
 
 /**
+ * Taken from: https://github.com/actions/toolkit/blob/main/packages/artifact/src/internal/status-reporter.ts
+ */
+
+/**
  * Status Reporter that displays information about the progress/status of an artifact
  * that is being uploaded or downloaded.
  *
@@ -11,7 +15,6 @@ import { info } from '@actions/core'
  * If there is a large file that is being uploaded, extra information about the individual
  * status can also be displayed using the updateLargeFileStatus function.
  *
- * Taken from: https://github.com/actions/toolkit/blob/main/packages/artifact/src/internal/status-reporter.ts
  */
 
 export class StatusReporter {

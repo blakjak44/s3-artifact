@@ -3,7 +3,7 @@
  *
  * @param name - The artifact name.
  */
-export function validateArtifactName(name: string) {
+export function validateArtifactName(name: string): void {
   const byteLength = Buffer.byteLength(name, 'utf8')
 
   if (byteLength > 1024) {

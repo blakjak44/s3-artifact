@@ -5,8 +5,8 @@ import { createHash } from 'node:crypto'
 import { pipeline, Readable, Writable } from 'node:stream'
 import { promisify } from 'util'
 import zlib from 'zlib'
+
 import * as core from '@actions/core'
-const pipe = promisify(pipeline)
 
 import {
   PutObjectCommand,
@@ -25,22 +25,26 @@ import { getLocalArtifactStats, getRemoteArtifactStats } from './files'
 import { compressIfPossible } from './compression'
 import { validateArtifactName } from './validation'
 import { StatusReporter } from './status-reporter'
+import { multipartThreshold, multipartChunksize } from './config'
+
+import type { LocalArtifactStats, RemoteArtifactStats } from './files'
+import type { CompressedSource} from './compression'
+
+const pipe = promisify(pipeline)
 
 
-type GithubContext = {
+export type GithubContext = {
   repo: {
     owner: string
     repo: string
   }
   runId: number
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   [key: string]: any
 }
 
+
 type PipelineElement = Readable | Writable
-
-
-const configMultipartThreshold = 16 * 1024 ** 2  // 16 MB
-const configMultipartChunksize = 8 * 1024 ** 2  // 8 MB
 
 
 export class S3ArtifactClient {
@@ -86,7 +90,7 @@ export class S3ArtifactClient {
     name: string,
     path: string,
     context: GithubContext,
-  ) {
+  ): Promise<RemoteArtifactStats | undefined> {
     try {
       const { owner, repo } = context.repo
 
@@ -146,7 +150,6 @@ export class S3ArtifactClient {
       return stats
     } catch (err) {
       console.error(err)
-      core.error(`Failed to download artifact: ${err}`)
     } finally {
       this._statusReporter.stop()
     }
@@ -159,14 +162,10 @@ export class S3ArtifactClient {
     path: string,
     context: GithubContext,
     checksum = true,
-  ) {
+  ): Promise<LocalArtifactStats | undefined> {
     try {
-      // validateLocalArtifactPath(path)
-
       const stats = await getLocalArtifactStats(path)
       const { entries, count } = stats
-
-      debugger
 
       core.info(`With the provided path, there will be ${count} files uploaded`)
       core.info('Starting artifact upload')
@@ -192,7 +191,7 @@ export class S3ArtifactClient {
       this._statusReporter.start()
 
       for (const entry of entries) {
-        let { filepath, size } = entry
+        const { filepath, size } = entry
 
         core.debug(`Processing file: ${filepath}`)
 
@@ -209,7 +208,7 @@ export class S3ArtifactClient {
           tempFilepath,
         )
 
-        if (uploadSource.size > configMultipartThreshold) {
+        if (uploadSource.size > multipartThreshold) {
           await this._uploadMultipart(uploadSource, bucket, key, checksum)
         } else {
           await this._uploadSingle(uploadSource, bucket, key, checksum)
@@ -223,18 +222,18 @@ export class S3ArtifactClient {
 
       return stats
     } catch (error) {
-      core.error(`Failed to upload artifact: ${error}`)
+      console.error(error)
     } finally {
       this._statusReporter.stop()
     }
   }
 
   async _uploadSingle(
-    source: UploadSource,
+    source: CompressedSource,
     bucket: string,
     key: string,
     checksum = true,
-  ) {
+  ): Promise<void> {
     const { stream, encoding } = source
 
     return new Promise<void>((resolve, reject) => {
@@ -272,156 +271,155 @@ export class S3ArtifactClient {
 
   // TODO - Parallelize
   async _uploadMultipart(
-    source: UploadSource,
+    source: CompressedSource,
     bucket: string,
     key: string,
     checksum = true,
-  ) {
+  ): Promise<void> {
     const { filepath, stream, size, encoding } = source
 
-    return new Promise<void>(async (resolve, reject) => {
-      const command = new CreateMultipartUploadCommand({
-        ContentEncoding: encoding,
-        Bucket: bucket,
-        Key: key,
-        ChecksumAlgorithm: 'sha256',
-      })
+    return new Promise<void>((resolve, reject) => {
+      (async () => {
+        const command = new CreateMultipartUploadCommand({
+          ContentEncoding: encoding,
+          Bucket: bucket,
+          Key: key,
+          ChecksumAlgorithm: 'sha256',
+        })
 
-      let response
-
-      try {
-        response = await this._client.send(command)
-      } catch (err) {
-        return reject(err)
-      }
-
-      const { UploadId } = response
-
-      core.debug(`Multipart upload initiated with ID: ${UploadId}`)
-
-      const multipartConfig = {
-        UploadId,
-        Bucket: bucket,
-        Key: key,
-      }
-
-      let partNumber = 1
-      let byteCount = 0
-      let chunkByteCount = 0
-
-      const chunkBuffer: Buffer[] = []
-      const completedParts: CompletedPart[] = []
-
-      const uploadPart = async () => {
-        if (!chunkBuffer.length) return
+        let response
 
         try {
-          stream.pause()
-
-          const chunk = Buffer.concat(chunkBuffer)
-          const { length } = chunk
-
-          const sha256 = checksum
-            ? createHash('sha256').update(chunk).digest('base64')
-            : undefined
-
-          const command = new UploadPartCommand({
-            Body: chunk,
-            ContentLength: length,
-            PartNumber: partNumber,
-            ChecksumSHA256: sha256,
-            ...multipartConfig,
-          })
-
-          let ETag: string | undefined
-
-          ({ ETag } = await this._client.send(command))
-
-          completedParts.push({ ETag: ETag!, PartNumber: partNumber++, ChecksumSHA256: sha256 })
-
-          core.debug(`Uploaded part ETag: ${ETag}`)
-
-          this._statusReporter.updateLargeFileStatus(
-            filepath,
-            byteCount,
-            byteCount += length,
-            size,
-          )
-
-          chunkByteCount = 0
-          chunkBuffer.length = 0
-
-          stream.resume()
+          response = await this._client.send(command)
         } catch (err) {
           return reject(err)
         }
-      }
 
-      stream.on('data', (data) => {
-        chunkBuffer.push(data as Buffer)
+        const { UploadId } = response
 
-        const { length } = data as Buffer
-        chunkByteCount += length
+        core.debug(`Multipart upload initiated with ID: ${UploadId}`)
 
-        if (chunkByteCount >= configMultipartChunksize) {
-          uploadPart()
+        const multipartConfig = {
+          UploadId,
+          Bucket: bucket,
+          Key: key,
         }
-      })
 
-      const abort = async (err: Error) => {
-        core.error('Aborting multipart upload.')
+        let partNumber = 1
+        let byteCount = 0
+        let chunkByteCount = 0
 
-        let retry = 1
-        let retryMax = 10
+        const chunkBuffer: Buffer[] = []
+        const completedParts: CompletedPart[] = []
 
-        const abort = new AbortMultipartUploadCommand(multipartConfig)
-        const list = new ListPartsCommand(multipartConfig)
+        const uploadPart = async (): Promise<void> => {
+          if (!chunkBuffer.length) return
 
-        try {
-          for (;;) {
-              await this._client.send(abort)
+          try {
+            stream.pause()
 
-              const listResponse = await this._client.send(list)
+            const chunk = Buffer.concat(chunkBuffer)
+            const { length } = chunk
 
-              if (!listResponse.Parts || !listResponse.Parts.length) {
-                break
-              } else if (++retry >= retryMax) {
-                throw Error(`Aborted upload part cleanup failed after ${retryMax} attempts.`)
-              }
+            const sha256 = checksum
+              ? createHash('sha256').update(chunk).digest('base64')
+              : undefined
 
-              // Wait for 1 second between retries
-              await new Promise((res) => setTimeout(res, 1000))
+            const command = new UploadPartCommand({
+              Body: chunk,
+              ContentLength: length,
+              PartNumber: partNumber,
+              ChecksumSHA256: sha256,
+              ...multipartConfig,
+            })
+
+            const { ETag } = await this._client.send(command)
+
+            // TODO - Confirm whether ETag can be missing
+            completedParts.push({ ETag: ETag!, PartNumber: partNumber++, ChecksumSHA256: sha256 })
+
+            core.debug(`Uploaded part ETag: ${ETag}`)
+
+            this._statusReporter.updateLargeFileStatus(
+              filepath,
+              byteCount,
+              byteCount += length,
+              size,
+            )
+
+            chunkByteCount = 0
+            chunkBuffer.length = 0
+
+            stream.resume()
+          } catch (err) {
+            return reject(err)
           }
-        } catch (err2) {
-          console.error(err2)
-          core.warning('Failed to properly abort multipart upload, manual cleanup may be required.')
-          core.warning(`Multipart Upload Properties: ${JSON.stringify(multipartConfig)}`)
-        } finally {
-          reject(err)
         }
-      }
 
-      stream.on('end', async () => {
-        try {
-          if (chunkBuffer.length) {
-            await uploadPart()
+        stream.on('data', (data) => {
+          chunkBuffer.push(data as Buffer)
+
+          const { length } = data as Buffer
+          chunkByteCount += length
+
+          if (chunkByteCount >= multipartChunksize) {
+            uploadPart()
+          }
+        })
+
+        const abort = async (err: Error): Promise<void> => {
+          const retryMax = 10
+          let retry = 1
+
+          const abort = new AbortMultipartUploadCommand(multipartConfig)
+          const list = new ListPartsCommand(multipartConfig)
+
+          try {
+            for (;;) {
+                await this._client.send(abort)
+
+                const listResponse = await this._client.send(list)
+
+                if (!listResponse.Parts || !listResponse.Parts.length) {
+                  break
+                } else if (++retry >= retryMax) {
+                  throw Error(`Aborted upload part cleanup failed after ${retryMax} attempts.`)
+                }
+
+                // Wait for 1 second between retries
+                await new Promise((res) => setTimeout(res, 1000))
+            }
+          } catch (err2) {
+            console.error(err2)
+            core.warning('Failed to properly abort multipart upload, manual cleanup may be required.')
+            core.warning(`Multipart Upload Properties: ${JSON.stringify(multipartConfig)}`)
+          } finally {
+            reject(err)
+          }
+        }
+
+        stream.on('end', async () => {
+          try {
+            if (chunkBuffer.length) {
+              await uploadPart()
+            }
+
+            const complete = new CompleteMultipartUploadCommand({
+              MultipartUpload: { Parts: completedParts },
+              ...multipartConfig,
+            })
+
+            await this._client.send(complete)
+          } catch (err) {
+            core.error('Failed to complete multipart upload. Aborting.')
+            abort(err as Error)
           }
 
-          const complete = new CompleteMultipartUploadCommand({
-            MultipartUpload: { Parts: completedParts },
-            ...multipartConfig,
-          })
+          resolve()
+        })
 
-          await this._client.send(complete)
-        } catch (err) {
-          core.error('Failed to complete multipart upload. Aborting.')
-          abort(err as Error)
-        }
-
-        resolve()
-      })
-
-      stream.on('error', abort)
+        stream.on('error', abort)
+      })()
     })
   }
 }

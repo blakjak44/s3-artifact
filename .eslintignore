@@ -1,4 +1,6 @@
 dist/
 lib/
+types/
 node_modules/
 jest.config.js
+rollup.config.ts

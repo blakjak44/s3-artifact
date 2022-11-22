@@ -4,10 +4,19 @@ import { resolve, parse } from 'path'
 import { pipeline, Readable } from 'node:stream'
 import { promisify } from 'util'
 import zlib from 'zlib'
+
 const pipe = promisify(pipeline)
 
+import { multipartThreshold } from './config'
 
-const configMultipartThreshold = 16 * 1024 ** 2 // 16 MB
+
+export type CompressedSource = {
+  filepath: string
+  stream: import('fs').ReadStream
+  size: number
+  encoding?: 'gzip'
+}
+
 
 /**
  * GZipping certain files that are already compressed will likely not yield further size reductions.
@@ -41,7 +50,7 @@ export async function compressIfPossible(
   size: number,
   tempFilepath: string,
   autoDelete = true,
-): Promise<UploadSource> {
+): Promise<CompressedSource> {
   const absoluteFilepath = resolve(filepath)
   const absoluteTempFilepath = resolve(tempFilepath)
 
@@ -57,7 +66,7 @@ export async function compressIfPossible(
   }
 
   // If small enough, compress in-memory
-  const result = size <= configMultipartThreshold
+  const result = size <= multipartThreshold
     ? await compressInMemory(absoluteFilepath, size)
     : await compressOnDisk(absoluteFilepath, tempFilepath, size)
 
@@ -77,8 +86,8 @@ export async function compressIfPossible(
 }
 
 
-async function compressInMemory(filepath: string, size: number) {
-  return new Promise<UploadSource>((resolve, reject) => {
+async function compressInMemory(filepath: string, size: number): Promise<CompressedSource> {
+  return new Promise<CompressedSource>((resolve, reject) => {
     const chunks: Buffer[] = []
 
     const source = createReadStream(filepath)
@@ -91,11 +100,13 @@ async function compressInMemory(filepath: string, size: number) {
       const buffer = Buffer.concat(chunks)
       const compressedSize = buffer.length
 
-      let result: UploadSource
+      let result: CompressedSource
 
       if (compressedSize < size) {
         const stream = Readable.from(buffer) as ReadStream
-        stream.close = () => {}
+        stream.close = () => {
+          // Noop
+        }
 
         result = {
           filepath,
@@ -119,7 +130,7 @@ async function compressInMemory(filepath: string, size: number) {
 }
 
 
-async function compressOnDisk(filepath: string, tempFilepath: string, size: number) {
+async function compressOnDisk(filepath: string, tempFilepath: string, size: number): Promise<CompressedSource> {
   const source = createReadStream(filepath)
   const gzip = zlib.createGzip()
   const destination = createWriteStream(tempFilepath)
@@ -128,7 +139,7 @@ async function compressOnDisk(filepath: string, tempFilepath: string, size: numb
 
   const { size: compressedSize } = await stat(tempFilepath)
 
-  let result: UploadSource
+  let result: CompressedSource
 
   if (compressedSize < size) {
     result = {
