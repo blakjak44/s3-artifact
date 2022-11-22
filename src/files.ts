@@ -1,6 +1,7 @@
-import { join, resolve } from 'path'
+import { resolve } from 'path'
 import { stat } from 'fs/promises'
 
+import { ListObjectsV2Command, S3Client } from '@aws-sdk/client-s3'
 import * as glob from '@actions/glob'
 
 
@@ -9,67 +10,78 @@ export type FileEntry = {
   size: number
 }
 
-export type ArtifactStats = {
+export type LocalArtifactStats = {
   entries: FileEntry[]
   size: number
   count: number
 }
 
+export type S3FileEntry = {
+  Key?: string
+  LastModified?: Date
+  ETag?: string
+  Size?: number
+  StorageClass?: string
+}
+
+export type RemoteArtifactStats = {
+  entries: S3FileEntry[]
+  count: number
+}
+
 
 /**
- * Retrieve stats for file(s) in provided artifact path.
+ * Gather stats for local artifact file(s).
  *
- * @param fileOrDirectory - The artifact path.
- * @param ignorePaths 
+ * @param path - Array of glob patterns joined by newlines.
  */
-export async function getLocalArtifactStats(fileOrDirectory: string, ignorePaths?: string[]): Promise<ArtifactStats> {
-  const inputStats = await stat(fileOrDirectory)
+export async function getLocalArtifactStats(path: string): Promise<LocalArtifactStats> {
+  const entries: FileEntry[] = []
+  let totalSize = 0
 
-  let entries: FileEntry[]
-  let size: number
-  let count: number
+  const globber = await glob.create(path)
+  const files = await globber.glob()
 
-  if (inputStats.isDirectory()) {
-    const includePath = join(fileOrDirectory, '**', '*')
+  for (const file of files) {
+    const stats = await stat(file)
 
-    const globPaths = [includePath]
-
-    if (ignorePaths) {
-      globPaths.push(...ignorePaths.map((path) => `!${join(fileOrDirectory, path)}`))
+    if (stats.isFile()) {
+      const filepath = resolve(file)
+      const { size } = stats
+      totalSize += size
+      entries.push({ filepath, size })
     }
-
-    debugger
-
-    const globPath = globPaths.join('\n')
-
-    const globber = await glob.create(globPath)
-    const files = await globber.glob()
-
-    const fileEntries: FileEntry[] = []
-
-    await Promise.all(files.map(async (file) => {
-      const stats = await stat(file)
-      if (stats.isFile()) {
-
-        fileEntries.push({
-          filepath: resolve(file),
-          size: stats.size,
-        })
-      }
-    }))
-
-    entries = fileEntries
-    size = entries.reduce((i, { size }) => i + size, 0)
-    count = entries.length
-
-  } else {
-    entries = [{
-      filepath: resolve(fileOrDirectory),
-      size: inputStats.size,
-    }]
-    size = inputStats.size
-    count = 1
   }
 
-  return { entries, size, count }
+  if (!entries.length) {
+    throw Error('No files found within artifact path(s).')
+  }
+
+  return { entries, count: entries.length, size: totalSize }
+}
+
+
+/**
+ * Retrieve stats for remote files in existing artifact.
+ */
+export async function getRemoteArtifactStats(client: S3Client, bucket: string, artifactPath: string): Promise<RemoteArtifactStats> {
+  const entries = []
+
+  const list = new ListObjectsV2Command({ Bucket: bucket, Prefix: artifactPath })
+
+  for (;;) {
+    const response = await client.send(list)
+
+    const { Contents, NextContinuationToken } = response
+
+    if (!Contents) break
+
+    entries.push(...Contents)
+
+    if (!NextContinuationToken) break
+
+    list.input.ContinuationToken = NextContinuationToken
+  }
+
+  return { entries, count: entries.length }
 }

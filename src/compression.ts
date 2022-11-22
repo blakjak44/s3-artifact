@@ -1,14 +1,13 @@
 import { createReadStream, createWriteStream, existsSync, rm, ReadStream } from 'fs'
 import { stat } from 'fs/promises'
 import { resolve, parse } from 'path'
-import { pipeline } from 'node:stream'
+import { pipeline, Readable } from 'node:stream'
 import { promisify } from 'util'
 import zlib from 'zlib'
-import {Readable} from 'stream'
 const pipe = promisify(pipeline)
 
 
-const configMultipartThreshold = 6 * 1024 ** 2 // 6MB
+const configMultipartThreshold = 16 * 1024 ** 2 // 16 MB
 
 /**
  * GZipping certain files that are already compressed will likely not yield further size reductions.
@@ -24,22 +23,6 @@ const gzipExemptFileExtensions = [
   '.tar.bz2',
   '.7z'
 ]
-
-
-/**
- * Converts a buffer to a readable stream.
- *
- * @param buffer - Buffer
- * @returns New readable stream
- */
-function bufferToStream(buffer: Buffer) {
-  const readableStream = new ReadStream()
-
-  readableStream.push(buffer)
-  readableStream.push(null)
-
-  return readableStream
-}
 
 
 /**
@@ -70,7 +53,6 @@ export async function compressIfPossible(
       filepath: absoluteFilepath,
       stream: createReadStream(absoluteFilepath),
       size,
-      encoding: 'gzip',
     }
   }
 

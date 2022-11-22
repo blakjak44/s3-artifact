@@ -1,11 +1,17 @@
 import { info } from '@actions/core'
 
 /**
- * Status Reporter that displays information about the progress/status of an artifact that is being uploaded or downloaded
+ * Status Reporter that displays information about the progress/status of an artifact
+ * that is being uploaded or downloaded.
  *
- * Variable display time that can be adjusted using the displayFrequencyInMilliseconds variable
- * The total status of the upload/download gets displayed according to this value
- * If there is a large file that is being uploaded, extra information about the individual status can also be displayed using the updateLargeFileStatus function
+ * Variable display time that can be adjusted using the displayFrequencyInMilliseconds variable.
+ *
+ * The total status of the upload/download gets displayed according to this value.
+ *
+ * If there is a large file that is being uploaded, extra information about the individual
+ * status can also be displayed using the updateLargeFileStatus function.
+ *
+ * Taken from: https://github.com/actions/toolkit/blob/main/packages/artifact/src/internal/status-reporter.ts
  */
 
 export class StatusReporter {

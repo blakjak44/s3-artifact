@@ -1,7 +1,7 @@
 import process from 'process'
 import { rm, unlink } from 'fs/promises'
 import { existsSync } from 'fs'
-import { test, afterEach } from '@jest/globals'
+import { test, expect, afterEach } from '@jest/globals'
 
 import { S3ArtifactClient } from '../src/client'
 import { createFile } from './utils'
@@ -58,25 +58,42 @@ const context = {
 //  await unlink(singleFilePath)
 //})
 
-test('upload real archive', async () => {
+// test('upload real archive', async () => {
+//   const client = new S3ArtifactClient(
+//     region,
+//     accessKeyId,
+//     secretAccessKey,
+//   )
+// 
+//   const ignore = [
+//     'bundled',
+//     'mac-arm64',
+//   ]
+// 
+//   await client.upload(
+//     bucket,
+//     'global',
+//     name,
+//     'dist_electron/**/*.dylib',
+//     context,
+//     true,
+//   )
+// }, 500000)
+
+test('download real archive', async () => {
   const client = new S3ArtifactClient(
     region,
     accessKeyId,
     secretAccessKey,
   )
 
-  const ignore = [
-    'bundled',
-    'mac-arm64',
-  ]
-
-  await client.upload(
+  const result = await client.download(
     bucket,
     'global',
     name,
-    'dist_electron',
+    'downloaded_artifact',
     context,
-    ignore,
   )
-}, 500000)
 
+  expect(result).not.toBeUndefined()
+}, 500000)
