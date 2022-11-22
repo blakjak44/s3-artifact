@@ -1,4 +1,4 @@
-import { parse, relative, resolve } from 'path'
+import { dirname, parse, relative, resolve } from 'path'
 import { mkdir } from 'fs/promises'
 import { createWriteStream } from 'fs'
 import { createHash } from 'node:crypto'
@@ -165,7 +165,7 @@ export class S3ArtifactClient {
   ): Promise<LocalArtifactStats | undefined> {
     try {
       const stats = await getLocalArtifactStats(path)
-      const { entries, count } = stats
+      const { root, entries, count } = stats
 
       core.info(`With the provided path, there will be ${count} files uploaded`)
       core.info('Starting artifact upload')
@@ -195,15 +195,13 @@ export class S3ArtifactClient {
 
         core.debug(`Processing file: ${filepath}`)
 
-        const absolutePath = resolve(filepath)
-        const absoluteDir = parse(absolutePath).dir
-        const tempFilepath = absolutePath + '.artifact.gzip'
-        const relativePath = relative(absoluteDir, filepath)
+        const tempFilepath = filepath + '.artifact.gzip'
+        const relativePath = relative(dirname(root), filepath)
 
         const key = `${artifactPrefix}/${relativePath}`
 
         const uploadSource = await compressIfPossible(
-          absolutePath,
+          filepath,
           size,
           tempFilepath,
         )

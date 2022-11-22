@@ -75,6 +75,7 @@ export async function compressIfPossible(
       if (existsSync(tempFilepath)) {
         rm(absoluteTempFilepath, (err) => {
           if (err) {
+            console.error(err)
             console.error(`Failed to delete tempfile: ${absoluteTempFilepath}`)
           }
         })

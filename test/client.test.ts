@@ -58,42 +58,37 @@ const context = {
 //  await unlink(singleFilePath)
 //})
 
-// test('upload real archive', async () => {
-//   const client = new S3ArtifactClient(
-//     region,
-//     accessKeyId,
-//     secretAccessKey,
-//   )
-// 
-//   const ignore = [
-//     'bundled',
-//     'mac-arm64',
-//   ]
-// 
-//   await client.upload(
-//     bucket,
-//     'global',
-//     name,
-//     'dist_electron/**/*.dylib',
-//     context,
-//     true,
-//   )
-// }, 500000)
-
-test('download real archive', async () => {
+test('upload real archive', async () => {
   const client = new S3ArtifactClient(
     region,
     accessKeyId,
     secretAccessKey,
   )
 
-  const result = await client.download(
+  await client.upload(
     bucket,
     'global',
     name,
-    'downloaded_artifact',
+    'dist_electron\n!*bundled*',
     context,
+    true,
   )
-
-  expect(result).not.toBeUndefined()
 }, 500000)
+
+//test('download real archive', async () => {
+//  const client = new S3ArtifactClient(
+//    region,
+//    accessKeyId,
+//    secretAccessKey,
+//  )
+//
+//  const result = await client.download(
+//    bucket,
+//    'global',
+//    name,
+//    'downloaded_artifact',
+//    context,
+//  )
+//
+//  expect(result).not.toBeUndefined()
+//}, 500000)
