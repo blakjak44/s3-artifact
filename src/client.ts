@@ -2,7 +2,7 @@ import { dirname, parse, relative, resolve } from 'path'
 import { mkdir } from 'fs/promises'
 import { createWriteStream } from 'fs'
 import { createHash } from 'node:crypto'
-import { pipeline, Readable, Writable } from 'node:stream'
+import { pipeline } from 'node:stream'
 import { promisify } from 'util'
 import zlib from 'zlib'
 
@@ -139,7 +139,7 @@ export class S3ArtifactClient {
 
         const destination = createWriteStream(destPath)
 
-        const streams: StreamPipeline = [response.Body as Readable]
+        const streams: StreamPipeline = [response.Body as NodeJS.ReadableStream]
 
         if (response.ContentEncoding === 'gzip') {
           streams.push(zlib.createGunzip())
