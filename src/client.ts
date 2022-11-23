@@ -21,7 +21,13 @@ import {
 
 import type { S3ClientConfig, CompletedPart } from "@aws-sdk/client-s3"
 
-import { getLocalArtifactStats, getRemoteArtifactStats } from './files'
+import {
+  getLocalArtifactStats,
+  getRemoteArtifactStats,
+  toPlatformPath,
+  toKey,
+} from './files'
+
 import { compressIfPossible } from './compression'
 import { validateArtifactName } from './validation'
 import { StatusReporter } from './status-reporter'
@@ -114,8 +120,9 @@ export class S3ArtifactClient {
         if (!entry.Key) continue
 
         const relativePath = relative(artifactPrefix, entry.Key)
-        const destPath = resolve(path, relativePath)
-        const destDir = parse(destPath).dir
+
+        const destPath = toPlatformPath(resolve(path, relativePath))
+        const destDir = toPlatformPath(parse(destPath).dir)
 
         const get = new GetObjectCommand({
           Bucket: bucket,
@@ -198,7 +205,7 @@ export class S3ArtifactClient {
         const tempFilepath = filepath + '.artifact.gzip'
         const relativePath = relative(dirname(root), filepath)
 
-        const key = `${artifactPrefix}/${relativePath}`
+        const key = toKey(`${artifactPrefix}/${relativePath}`)
 
         const uploadSource = await compressIfPossible(
           filepath,
