@@ -50,7 +50,7 @@ export type GithubContext = {
 }
 
 
-type PipelineElement = Readable | Writable
+type StreamPipeline = (NodeJS.ReadableStream | NodeJS.WritableStream | NodeJS.ReadWriteStream)[]
 
 
 export class S3ArtifactClient {
@@ -139,15 +139,17 @@ export class S3ArtifactClient {
 
         const destination = createWriteStream(destPath)
 
-        const pipeline: PipelineElement[] = [response.Body as Readable]
+        const streams: StreamPipeline = [response.Body as Readable]
 
         if (response.ContentEncoding === 'gzip') {
-          pipeline.push(zlib.createGunzip())
+          streams.push(zlib.createGunzip())
         }
 
-        pipeline.push(destination)
+        streams.push(destination)
 
-        await pipe(pipeline)
+        core.debug(`Download pipeline: ${streams}`)
+
+        await pipe(streams)
 
         core.debug(`Downloaded file: ${relativePath}`)
 

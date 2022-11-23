@@ -193,7 +193,7 @@ export async function getRemoteArtifactStats(client: S3Client, bucket: string, a
  * Ensure path is S3 compatible.
  */
  export function toKey(path: string): string {
-    return path.replace('\\', '/')
+    return path.replace(/\\/g, '/')
  }
 
 
@@ -202,7 +202,7 @@ export async function getRemoteArtifactStats(client: S3Client, bucket: string, a
  */
  export function toPlatformPath(key: string): string {
    if (process.platform === 'win32') {
-     return key.replace('/', '\\')
+     return key.replace(/\//g, '\\')
    }
    return key
  }
