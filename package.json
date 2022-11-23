@@ -1,6 +1,6 @@
 {
   "name": "s3-artifact",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "description": "A client for S3-backed Github Actions artifacts.",
   "author": "<blakjak44@gmail.com>",
   "license": "MIT",
@@ -15,8 +15,7 @@
     "lint": "eslint src/**/*.ts",
     "test": "jest",
     "build": "rollup -c --configPlugin typescript",
-    "package": "ncc build --source-map --license licenses.txt",
-    "all": "yarn lint && yarn test && yarn build "
+    "all": "yarn lint && yarn build && yarn test"
   },
   "dependencies": {
     "@actions/artifact": "^1.1.0",
